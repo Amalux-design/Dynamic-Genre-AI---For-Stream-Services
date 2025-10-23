@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Streaming Browse — IA + Embedded AI Suggestions</title>
+<style>
+  :root{
+    --bg: #071014;
+    --sidebar: #0b0b0b;
+    --panel: #0f0f10;
+    --muted: #9aa0a6;
+    --accent: #e50914;
+    --white: #f6f6f6;
+    --card: #111213;
+    --glass: rgba(255,255,255,0.02);
+  }
+
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg),#050506);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;color:var(--white);-webkit-font-smoothing:antialiased}
+  .app{display:flex;height:100vh;overflow:hidden}
+
+/* ---------------- Sidebar ---------------- */
+  .sidebar{
+    width:300px;background:var(--sidebar);padding:20px;box-sizing:border-box;border-right:1px solid rgba(255,255,255,0.03);overflow:auto;
+  }
+  .brand{font-weight:700;font-size:18px;margin-bottom:14px}
+  .hint{color:var(--muted);font-size:13px;margin-bottom:12px}
+
+  .searchWrap{display:flex;gap:8px;margin-bottom:12px}
+  .searchWrap input{flex:1;padding:8px 10px;border-radius:6px;border:1px solid #1b1b1b;background:transparent;color:var(--white);outline:none}
+  .searchWrap button{background:var(--accent);border:none;color:white;padding:8px 10px;border-radius:6px;cursor:pointer}
+
+  .menu{margin-top:6px}
+  .mainRow{
+    display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:6px;cursor:pointer;color:var(--white);font-weight:700;margin-bottom:6px;
+  }
+  .mainRow:hover{background:rgba(255,255,255,0.02)}
+  .mainRow .chev{color:var(--muted);font-weight:700}
+
+  .submenu{overflow:hidden;height:0;opacity:0;margin:6px 0 10px 8px}
+  .submenu.open{opacity:1}
+
+  .subList{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+  .subItem{
+    padding:8px;border-radius:6px;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+  }
+  .subItem:hover{color:var(--white);background:rgba(255,255,255,0.02)}
+  .subItem.active{background:rgba(255,255,255,0.02);border-left:3px solid var(--accent);padding-left:6px;color:var(--white)}
+
+  .children{overflow:hidden;height:0;margin-left:8px;padding-left:10px;border-left:1px dashed rgba(255,255,255,0.02)}
+  .leaf{
+    padding:6px 8px;border-radius:6px;color:#d0d0d0;margin:6px 0;font-size:13px;cursor:pointer;
+  }
+  .leaf:hover{color:var(--white);background:rgba(255,255,255,0.02)}
+  .leaf.matched{background:rgba(229,9,20,0.12);border-left:3px solid var(--accent);padding-left:6px;color:var(--white)}
+
+  /* Suggestions (below subgenres) */
+  .suggestionBox{
+    margin-top:12px;padding:10px;border-radius:8px;background:linear-gradient(90deg, rgba(229,9,20,0.03), transparent);
+    box-shadow: -6px 0 18px rgba(229,9,20,0.03);
+    border-left:5px solid rgba(229,9,20,0.14);
+  }
+  .suggestionTitle{font-size:13px;color:var(--muted);margin-bottom:8px}
+  .suggestList{display:flex;flex-direction:column;gap:8px}
+  .suggestItem{
+    display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:6px;background:transparent;cursor:pointer;color:var(--white);
+  }
+  .suggestItem:hover{background:rgba(255,255,255,0.02)}
+  .suggestBadge{font-size:12px;color:var(--muted)}
+
+  /* ---------------- Content area ---------------- */
+  .content{flex:1;padding:24px;overflow:auto}
+  .topBar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+  .breadcrumbs{color:var(--muted);font-size:13px}
+  .titleRow{display:flex;align-items:center;gap:12px}
+  .pageTitle{font-size:20px;margin:0}
+  .sortWrap{margin-left:auto;display:flex;align-items:center;gap:8px}
+  select.sort{
+    background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px 10px;border-radius:6px;color:var(--white);outline:none;
+  }
+
+/* ----- GRID ----- */
+/* ----- GRID (4–5 portrait cards per row) ----- */
+.grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 18px;
+  justify-content: center;
+  transition: opacity 260ms ease, transform 240ms ease;
+  opacity: 1;
+}
+
+.grid.hidden {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* ----- CARD (portrait) ----- */
+.card {
+  background: var(--card);
+  border-radius: 2px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  cursor: pointer;
+}
+
+.card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+/* ----- THUMBNAIL (poster-like) ----- */
+.thumb {
+  width: 100%;
+  aspect-ratio: 2 / 3; /* portrait shape like Netflix posters */
+  border-radius: 2px;
+  background: #222;
+  object-fit: cover;
+  display: block;
+}
+
+/* ----- CARD TEXT ----- */
+.cardTitle {
+  font-size: 14px;
+  color: var(--white);
+  margin: 8px 6px 4px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 6px 8px;
+}
+
+/* ----- RESPONSIVE LAYOUT ----- */
+@media (min-width: 1200px) {
+  .grid {
+    grid-template-columns: repeat(5, 1fr); /* 5 cards on wide screens */
+  }
+}
+
+@media (max-width: 1199px) and (min-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(4, 1fr); /* 4 cards on medium screens */
+  }
+}
+
+@media (max-width: 899px) and (min-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 639px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+
+</style>
+</head>
+<body>
+<div class="app" role="application" aria-label="Streaming Browser">
+  <aside class="sidebar" aria-label="Genres sidebar">
+    <div class="brand">Dynamic Genre AI</div>
+    <div class="hint">Click a genre to expand subgenres. Suggestions update as you navigate.</div>
+
+    <div class="searchWrap" aria-hidden>
+      <input id="quickSearch" placeholder='Try "samurai", "time travel", "zombies"' />
+      <button id="quickBtn">Go</button>
+    </div>
+
+    <nav id="menu" class="menu" aria-label="Genre menu"></nav>
+  </aside>
+
+  <main class="content" id="content" aria-live="polite">
+    <div class="topBar">
+      <div>
+        <div id="crumbs" class="breadcrumbs">Home</div>
+        <div class="titleRow">
+          <h1 id="pageTitle" class="pageTitle">Choose a genre</h1>
+        </div>
+      </div>
+
+      <div class="sortWrap" aria-label="Sort options">
+        <label style="color:var(--muted);font-size:13px">Sort</label>
+        <select id="sortSelect" class="sort" aria-label="Sort shows" style="background:#2b2b2b;">
+          <option>Most Popular</option>
+          <option>Recently Added</option>
+          <option>Top Rated</option>
+          <option>Newest First</option>
+          <option>Oldest First</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="gridWrap">
+      <div id="grid" class="grid"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ---------------- Data: full IA ---------------- */
+const IA = {
+  "Action": {
+    "Adventure":["Epic Quests","Survival","Treasure Hunting"],
+    "Martial Arts":["Kung Fu Classics","Samurai","Mixed Martial Arts"],
+    "Thrillers":["Spy & Espionage","Crime Action","Revenge"]
+  },
+  "Comedy": {
+    "Sitcoms":["Family Comedy","Workplace Comedy","Teen Comedy"],
+    "Romantic Comedy":["Modern Rom-Coms","Holiday Romance","Opposites Attract"],
+    "Dark Comedy":["Satire","Political Humor","Absurdist"]
+  },
+  "Romance": {
+    "Contemporary Romance":["Urban Love Stories","Online Dating","Love Triangles"],
+    "Historical Romance":["Regency Era","Period Dramas","Royal Affairs"],
+    "Fantasy Romance":["Supernatural Love","Time Travel Romance","Mythical Lovers"]
+  },
+  "Horror": {
+    "Supernatural Horror":["Ghosts & Hauntings","Demonic Possession","Witches & Curses"],
+    "Psychological Horror":["Mind Games","Isolation","Paranoia"],
+    "Monster Horror":["Vampires","Zombies","Creatures"]
+  },
+  "Drama": {
+    "Crime Drama":["Courtroom Stories","Mafia","True Crime"],
+    "Family Drama":["Generational Conflict","Domestic Life","Emotional Healing"],
+    "Historical Drama":["War & Revolution","Biographical Stories","Period Pieces"]
+  },
+  "Thriller": {
+    "Psychological Thriller":["Manipulation","Gaslighting","Identity Mystery"],
+    "Crime Thriller":["Detectives","Heists","Serial Killers"],
+    "Tech Thriller":["Cybercrime","AI Gone Wrong","Corporate Espionage"]
+  },
+  "Science Fiction": {
+    "Space Opera":["Intergalactic Wars","Alien Civilizations","Space Exploration"],
+    "Cyberpunk":["Dystopian Futures","Virtual Reality","Mega Corporations"],
+    "Time Travel":["Alternate Timelines","Future Earth","Paradox Stories"]
+  },
+  "Fantasy": {
+    "Epic Fantasy":["Magic Kingdoms","Dragons & Heroes","Ancient Prophecies"],
+    "Urban Fantasy":["Hidden Magic in Modern World","Magical Detectives","Secret Societies"],
+    "Dark Fantasy":["Antiheroes","Corruption & Power","Fallen Kingdoms"]
+  },
+  "Family": {
+    "Animated Films":["Talking Animals","Adventure Animation","Educational Stories"],
+    "Live Action Family":["Feel-Good Adventures","Holiday Specials","Coming-of-Age Tales"],
+    "Kids’ Series":["Preschool Shows","Learning & Fun","Junior Superheroes"]
+  },
+  "Music & Performing Arts": {
+    "Musicals":["Classic Musicals","Modern Jukebox","Animated Musicals"],
+    "Concerts & Performances":["Live Tours","Theater Productions","Dance Shows"],
+    "Music Documentaries":["Artist Biographies","Genre Histories","Behind the Scenes"]
+  },
+  "Documentary": {
+    "Nature & Science":["Wildlife","Space Exploration","Environmental Issues"],
+    "True Crime":["Cold Cases","Investigative Journalism","Court Trials"],
+    "Culture & Society":["Social Movements","Historical Events","Pop Culture"]
+  },
+  "Animation / Anime": {
+    "Action Anime":["Shonen","Mecha","Superpowers"],
+    "Fantasy Anime":["Isekai","Myth & Magic","Adventure"],
+    "Slice of Life":["School Life","Romance","Everyday Stories"]
+  }
+};
+
+/* ---------------- Helpers for measured height open/close ---------------- */
+function openMeasured(el){
+  el.style.display = 'block';
+  const h = el.scrollHeight;
+  el.style.height = '0px';
+  el.style.opacity = 0;
+  requestAnimationFrame(()=>{
+    el.style.transition = 'height 360ms cubic-bezier(.2,.9,.3,1), opacity 260ms ease';
+    el.style.height = h + 'px';
+    el.style.opacity = 1;
+  });
+  const tidy = ()=>{ el.style.height = 'auto'; el.removeEventListener('transitionend', tidy); };
+  el.addEventListener('transitionend', tidy);
+  el.classList.add('open');
+}
+function closeMeasured(el){
+  const h = el.scrollHeight;
+  el.style.height = h + 'px';
+  requestAnimationFrame(()=>{
+    el.style.transition = 'height 260ms cubic-bezier(.2,.9,.3,1), opacity 200ms ease';
+    el.style.height = '0px';
+    el.style.opacity = 0;
+  });
+  const tidy = ()=>{ el.style.display = 'none'; el.classList.remove('open'); el.removeEventListener('transitionend', tidy); };
+  el.addEventListener('transitionend', tidy);
+}
+
+/* ---------------- Build Sidebar UI ---------------- */
+const menu = document.getElementById('menu');
+
+function buildSidebar(ia){
+  menu.innerHTML = '';
+  Object.keys(ia).forEach(main=>{
+    const wrap = document.createElement('div');
+
+    const mainRow = document.createElement('div');
+    mainRow.className = 'mainRow';
+    mainRow.tabIndex = 0;
+    mainRow.textContent = main;
+
+    const chev = document.createElement('div'); chev.className='chev'; chev.textContent='▸';
+    mainRow.appendChild(chev);
+
+    const submenu = document.createElement('div');
+    submenu.className = 'submenu';
+    submenu.style.display = 'none';
+    submenu.setAttribute('data-main', main);
+
+    // sublist container (subgenres)
+    const subList = document.createElement('div');
+    subList.className = 'subList';
+
+    Object.keys(ia[main]).forEach(sub=>{
+      const subRow = document.createElement('div');
+      subRow.className = 'subItem';
+      subRow.tabIndex = 0;
+      subRow.setAttribute('data-sub', sub);
+
+      const label = document.createElement('div'); label.textContent = sub;
+      const subChev = document.createElement('div'); subChev.textContent = '▸'; subChev.className='chev';
+
+      subRow.appendChild(label); subRow.appendChild(subChev);
+
+      // children container
+      const children = document.createElement('div');
+      children.className = 'children';
+      children.style.display = 'none';
+
+      IA[main][sub].forEach(leaf=>{
+        const leafEl = document.createElement('div');
+        leafEl.className = 'leaf';
+        leafEl.textContent = leaf;
+        leafEl.tabIndex = 0;
+        leafEl.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          selectPath(main, sub, leaf, {fromSuggestion:false});
+        });
+        children.appendChild(leafEl);
+      });
+
+      // subRow click: toggles children, sets active, shows suggestions for main->sub
+      subRow.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        // close other children in this submenu
+        Array.from(submenu.querySelectorAll('.children.open')).forEach(c=>{
+          if(c !== children) closeMeasured(c);
+        });
+        if(children.classList.contains('open')) closeMeasured(children);
+        else openMeasured(children);
+
+        // mark active sub
+        Array.from(submenu.querySelectorAll('.subItem')).forEach(s=>s.classList.remove('active'));
+        subRow.classList.add('active');
+
+        // embedded AI suggestions for this (main,sub)
+        embeddedSuggest({main, sub, leaf:null});
+        // update content grid
+        updateContent(main, sub, null);
+        // ensure only one main open at a time
+        Array.from(document.querySelectorAll('.submenu.open')).forEach(s=>{ if(s !== submenu) closeMeasured(s); });
+      });
+
+      subList.appendChild(subRow);
+      subList.appendChild(children);
+    });
+
+    // suggestion placeholder (will be appended below subList when there are suggestions)
+    const suggestionBox = document.createElement('div');
+    suggestionBox.className = 'suggestionBox';
+    suggestionBox.style.display = 'none';
+    suggestionBox.innerHTML = `<div class="suggestionTitle">Suggested for you</div><div class="suggestList"></div>`;
+
+    submenu.appendChild(subList);
+    submenu.appendChild(suggestionBox);
+
+    // mainRow click toggles submenu; opening main shows subgenres first then suggestions below
+    mainRow.addEventListener('click', ()=>{
+      // close other mains first
+      Array.from(document.querySelectorAll('.submenu.open')).forEach(s=>{ if(s !== submenu) closeMeasured(s); });
+
+      if(submenu.classList.contains('open')){
+        closeMeasured(submenu);
+        // clear suggestion box
+        suggestionBox.style.display = 'none';
+        // collapse any children
+        submenu.querySelectorAll('.children.open').forEach(c=>closeMeasured(c));
+        submenu.querySelectorAll('.subItem.active').forEach(si=>si.classList.remove('active'));
+        updateContent(null,null,null);
+      } else {
+        openMeasured(submenu);
+        // show top-level suggestions for the main (no sub selected)
+        embeddedSuggest({main, sub:null, leaf:null});
+        // update content area for main
+        updateContent(main, null, null);
+      }
+    });
+
+    mainRow.addEventListener('keypress', (e)=>{ if(e.key==='Enter' || e.key===' ') mainRow.click(); });
+
+    wrap.appendChild(mainRow);
+    wrap.appendChild(submenu);
+    menu.appendChild(wrap);
+  });
+}
+buildSidebar(IA);
+
+/* ---------------- Embedded AI (local) ---------------- */
+/* Build a flat index for computing relatedness */
+function norm(s){ return (s||'').toLowerCase().replace(/[’'"]/g,'').replace(/[^\w\s]/g,'').trim(); }
+function tokens(s){ return norm(s).split(/\s+/).filter(Boolean); }
+
+const INDEX = [];
+Object.keys(IA).forEach(main=>{
+  Object.keys(IA[main]).forEach(sub=>{
+    IA[main][sub].forEach(leaf=>{
+      INDEX.push({
+        main, sub, leaf,
+        tokenSet: new Set(tokens(main + ' ' + sub + ' ' + leaf))
+      });
+    });
+  });
+});
+
+/* scoring heuristics */
+function scoreRelation(current, candidate){
+  const curTokens = new Set(tokens((current.main||'') + ' ' + (current.sub||'') + ' ' + (current.leaf||'')));
+  let overlap = 0;
+  candidate.tokenSet.forEach(t=>{
+    if(curTokens.has(t)) overlap += 1;
+    else curTokens.forEach(ct=>{ if(ct.includes(t) || t.includes(ct)) overlap += 0.3; });
+  });
+  const base = overlap / Math.sqrt(candidate.tokenSet.size + curTokens.size + 0.001);
+  // boosts
+  let boost = 0;
+  if(candidate.main !== current.main) boost += 0.12;
+  const crossPairs = [['Action','Thriller'], ['Horror','Thriller'], ['Science Fiction','Thriller'], ['Romance','Drama'], ['Comedy','Romance']];
+  crossPairs.forEach(pair=>{
+    if((pair[0]===current.main && pair[1]===candidate.main) || (pair[1]===current.main && pair[0]===candidate.main)) boost += 0.08;
+  });
+  const strong = ['crime','thriller','time','samurai','zombies','vampires','space','ai','cyberpunk','mystery'];
+  strong.forEach(t=>{ if(candidate.tokenSet.has(t)) boost += 0.01; });
+  return base + boost;
+}
+
+function computeSuggestions(current, limit=4){
+  const scored = INDEX.map(c => ({cand:c, score: scoreRelation(current,c)}));
+  scored.sort((a,b)=>b.score-a.score);
+  const seen = new Set(); const out = [];
+  for(const s of scored){
+    const key = s.cand.main + '|' + s.cand.sub;
+    if(!seen.has(key) && s.score > 0.06){
+      seen.add(key);
+      out.push({main:s.cand.main, sub:s.cand.sub, score:s.score});
+    }
+    if(out.length >= limit) break;
+  }
+  return out;
+}
+
+/* place suggestions into the suggestionBox of the given main submenu */
+function embeddedSuggest(selection){
+  const submenu = document.querySelector(`.submenu[data-main="${selection.main}"]`);
+  if(!submenu) return;
+  const box = submenu.querySelector('.suggestionBox');
+  const list = box.querySelector('.suggestList');
+  list.innerHTML = '';
+
+  const suggestions = computeSuggestions(selection, 6);
+  if(!suggestions || suggestions.length===0){ box.style.display='none'; return; }
+  box.style.display = 'block';
+
+  suggestions.forEach(sug=>{
+    const item = document.createElement('div');
+    item.className = 'suggestItem';
+    item.innerHTML = `<div style="font-weight:700">${sug.main} › ${sug.sub}</div><div class="suggestBadge">Suggested</div>`;
+    item.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      // when user jumps, previous suggestion must close; so close all suggestions then jump
+      document.querySelectorAll('.suggestionBox').forEach(b=>b.style.display='none');
+      jumpToPath(sug.main, sug.sub);
+    });
+    list.appendChild(item);
+  });
+}
+
+/* ---------------- Navigation & content update ---------------- */
+const crumbs = document.getElementById('crumbs');
+const pageTitle = document.getElementById('pageTitle');
+const grid = document.getElementById('grid');
+const sortSelect = document.getElementById('sortSelect');
+const quickSearch = document.getElementById('quickSearch');
+const quickBtn = document.getElementById('quickBtn');
+
+/* selection state */
+let CURRENT = {main:null, sub:null, leaf:null};
+
+/* generate mock show items for a given path */
+function generateMockShows(main, sub, leaf, count=12){
+  const seedBase = (main||'') + '|' + (sub||'') + '|' + (leaf||'');
+  const baseTokens = (seedBase + ' show movie series epic saga thriller romance').split(/\s+/).filter(Boolean);
+  const shows = [];
+  for(let i=0;i<count;i++){
+    const t = baseTokens[(i*3 + seedBase.length) % baseTokens.length];
+    const adj = ['Chronicles','Saga','Tales','Legacy','Files','Stories','Affair','Journey','Quest','Mystery'][i % 10];
+    const name = `${t.charAt(0).toUpperCase()+t.slice(1)} ${adj} ${1 + (i%20)}`;
+    // use picsum.photos for placeholder images (randomized by seeded-ish value)
+    const imgId = Math.abs(hash(seedBase + name)) % 200 + 10;
+    shows.push({
+      id: i,
+      title:name,
+      thumb: `https://picsum.photos/seed/${encodeURIComponent(seedBase + name)}/${400 + (i%6)}/${220 + (i%5)}` ,
+      popularity: Math.round(Math.random()*1000),
+      added: Date.now() - Math.floor(Math.random()*1000*60*60*24*365),
+      rating: +(Math.random()*4 + 1).toFixed(1)
+    });
+  }
+  return shows;
+}
+
+/* simple hash for deterministic image seed */
+function hash(s){ let h=2166136261; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h += (h<<1) + (h<<4) + (h<<7) + (h<<8) + (h<<24); } return h>>>0; }
+
+/* render grid with selected shows & animation */
+let currentRender = []; // last list
+function renderGrid(shows){
+  // fade out grid briefly
+  grid.classList.add('hidden');
+  setTimeout(()=>{
+    grid.innerHTML = '';
+    shows.forEach(item=>{
+      const c = document.createElement('div'); c.className = 'card';
+      const img = document.createElement('img'); img.className='thumb'; img.src = item.thumb; img.alt = item.title;
+      const t = document.createElement('div'); t.className='cardTitle'; t.textContent = item.title;
+      const meta = document.createElement('div'); meta.className='meta'; meta.textContent = `⭐ ${item.rating} • ${item.popularity} views`;
+      c.appendChild(img); c.appendChild(t); c.appendChild(meta);
+      grid.appendChild(c);
+    });
+    // after injecting, fade in
+    grid.classList.remove('hidden');
+  }, 200);
+}
+
+/* apply sorting */
+function sortShows(shows, mode){
+  const copy = shows.slice();
+  switch(mode){
+    case 'Most Popular': copy.sort((a,b)=>b.popularity - a.popularity); break;
+    case 'Recently Added': copy.sort((a,b)=>b.added - a.added); break;
+    case 'Top Rated': copy.sort((a,b)=>b.rating - a.rating); break;
+    case 'Newest First': copy.sort((a,b)=>b.added - a.added); break;
+    case 'Oldest First': copy.sort((a,b)=>a.added - b.added); break;
+    default: break;
+  }
+  return copy;
+}
+
+/* update content area when path selected */
+let lastGenerated = [];
+function updateContent(main, sub, leaf){
+  CURRENT = {main, sub, leaf};
+  const title = [main, sub, leaf].filter(Boolean).join(' › ');
+  pageTitle.textContent = title || 'Choose a genre';
+  crumbs.textContent = title ? `Home › ${title}` : 'Home';
+  // generate new mock shows
+  const shows = generateMockShows(main||'All', sub||'', leaf||'', 12);
+  lastGenerated = shows;
+  const sorted = sortShows(shows, sortSelect.value);
+  renderGrid(sorted);
+}
+
+/* clicking suggestion jumps to path (closes previous suggestions) */
+function jumpToPath(main, sub, leaf=null){
+  // close other mains
+  document.querySelectorAll('.submenu.open').forEach(s=>{ if(s.getAttribute('data-main') !== main) closeMeasured(s); });
+  // open target main
+  const submenu = document.querySelector(`.submenu[data-main="${main}"]`);
+  if(!submenu) return;
+  if(!submenu.classList.contains('open')) openMeasured(submenu);
+  // clear all suggestion boxes
+  document.querySelectorAll('.suggestionBox').forEach(b=>b.style.display='none');
+  // close other sub children and active markers
+  submenu.querySelectorAll('.children.open').forEach(c=>closeMeasured(c));
+  submenu.querySelectorAll('.subItem.active').forEach(si=>si.classList.remove('active'));
+  // find the subItem
+  const subItem = Array.from(submenu.querySelectorAll('.subItem')).find(si => si.getAttribute('data-sub') === sub);
+  if(subItem){
+    subItem.classList.add('active');
+    const children = subItem.nextElementSibling;
+    if(children && !children.classList.contains('open')) openMeasured(children);
+    // highlight leaf if provided, else update preview for sub
+    if(leaf){
+      const leafEl = Array.from(children.querySelectorAll('.leaf')).find(l => l.getAttribute('data-leaf') === leaf);
+      if(leafEl){ clearMatches(); leafEl.classList.add('matched'); leafEl.scrollIntoView({behavior:'smooth',block:'center'}); }
+      updateContent(main, sub, leaf);
+      return;
+    }
+    updateContent(main, sub, null);
+    return;
+  }
+  // fallback: update main preview
+  updateContent(main, null, null);
+}
+
+/* when user selects leaf via normal click */
+function selectPath(main, sub, leaf){
+  // ensure only one main open
+  document.querySelectorAll('.submenu.open').forEach(s=>{ if(s.getAttribute('data-main') !== main) closeMeasured(s); });
+  // highlight leaf and update suggestions
+  clearMatches();
+  jumpToPath(main, sub, leaf);
+  // update embedded suggestions for context
+  embeddedSuggest({main, sub, leaf});
+}
+
+/* clear matched highlights */
+function clearMatches(){
+  document.querySelectorAll('.leaf.matched').forEach(l=>l.classList.remove('matched'));
+}
+
+/* quick search logic: best scoring path via simple token overlap, then jump */
+quickBtn.addEventListener('click', ()=>doQuickSearch(quickSearch.value));
+quickSearch.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doQuickSearch(quickSearch.value); });
+
+function doQuickSearch(q){
+  if(!q || !q.trim()) return;
+  const qTokens = new Set(tokens(q));
+  const scored = INDEX.map(cand=>{
+    let overlap = 0;
+    cand.tokenSet.forEach(t=>{ if(qTokens.has(t)) overlap += 1; else qTokens.forEach(qt=>{ if(qt.includes(t) || t.includes(qt)) overlap += 0.4; }); });
+    let score = overlap / Math.sqrt(cand.tokenSet.size + qTokens.size + 0.01);
+    if(cand.main.toLowerCase().includes(q.toLowerCase()) || cand.sub.toLowerCase().includes(q.toLowerCase())) score += 0.25;
+    return {cand,score};
+  });
+  scored.sort((a,b)=>b.score-a.score);
+  const best = scored[0];
+  if(best && best.score > 0.06){
+    jumpToPath(best.cand.main, best.cand.sub, best.cand.leaf);
+  } else {
+    alert('No close match found locally. Try simpler keywords like "samurai", "zombies", "courtroom".');
+  }
+}
+
+/* sort change */
+sortSelect.addEventListener('change', ()=>{ renderGrid(sortShows(lastGenerated, sortSelect.value)); });
+
+/* initial grid (empty) */
+updateContent(null,null,null);
+
+/* expose functions for debugging */
+window._jumpToPath = jumpToPath;
+window._IA = IA;
+
+</script>
+</body>
+</html>
